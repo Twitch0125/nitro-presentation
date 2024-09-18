@@ -276,3 +276,9 @@ export default eventHandler(async (event) => {
 <v-click>
 No HTTP Request is actually made to `/people`, Nitro will call the function directly.
 </v-click>
+
+---
+layout: center
+---
+
+# Demo time!
