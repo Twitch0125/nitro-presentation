@@ -79,21 +79,23 @@ package.json
 
 # HTTP with h3
 
-```ts {all|3}
+```ts {all|3|4-11|11-}
 // routes/people/[id].get.ts
 
 export default eventHandler(async (event) => {
-    //Can take in a validator function from your favorite library, like Zod or Valibot
-    const { id } = await getValidatedRouterParams(event, (data) => {
+  //Can take in a validator function from your favorite library, like Zod or Valibot
+  const { id } = await getValidatedRouterParams(event, (data) => {
     const id = Number(data.id);
     if (Number.isNaN(id)) {
       throw new Error("id must be a number");
     }
     return { id: id };
   });
-  const data = await $fetch<[{name: string}]>(`http://swapi.dev/api/people/${id}`)
-  data.map(item => ({...item, name: item.name.toUpperCase()}))
-  return data //automatically gets serialized as JSON
+  const data = await $fetch<[{ name: string }]>(
+    `http://swapi.dev/api/people/${id}`,
+  );
+  data.map((item) => ({ ...item, name: item.name.toUpperCase() }));
+  return data; //automatically gets serialized as JSON
 });
 ```
 
@@ -101,4 +103,176 @@ export default eventHandler(async (event) => {
 
 ---
 
-# 
+# Cache
+
+````md magic-move
+```ts
+export default eventHandler(async (event) => {
+  const { id } = await getValidatedRouterParams(event, (data) => {
+    const id = Number(data.id);
+    if (Number.isNaN(id)) {
+      throw new Error("id must be a number");
+    }
+    return { id: id };
+  });
+  const data = await $fetch<[{ name: string }]>(
+    `http://swapi.dev/api/people/${id}`,
+  );
+  data.map((item) => ({ ...item, name: item.name.toUpperCase() }));
+  return data;
+});
+```
+
+```ts
+export default cachedEventHandler(async (event) => {
+  const { id } = await getValidatedRouterParams(event, (data) => {
+    const id = Number(data.id);
+    if (Number.isNaN(id)) {
+      throw new Error("id must be a number");
+    }
+    return { id: id };
+  });
+  const data = await $fetch<[{ name: string }]>(
+    `http://swapi.dev/api/people/${id}`,
+  );
+  data.map((item) => ({ ...item, name: item.name.toUpperCase() }));
+  return data;
+}, { maxAge: 60 * 60 * 1000 });
+```
+
+```ts
+export default eventHandler(async (event) => {
+  const { id } = await getValidatedRouterParams(event, (data) => {
+    const id = Number(data.id);
+    if (Number.isNaN(id)) {
+      throw new Error("id must be a number");
+    }
+    return { id: id };
+  });
+  const data = cachedFunction(async () => await $fetch<[{ name: string }]>(
+    `http://swapi.dev/api/people/${id}`,
+  ), { maxAge: 60 * 60 * 1000 })
+  data.map((item) => ({ ...item, name: item.name.toUpperCase() }));
+  return data;
+}});
+```
+````
+
+---
+
+# Cache
+
+```ts
+export default defineNitroConfig({
+  routeRules: {
+    "/people/*": {
+      cache: {
+        maxAge: 60 * 60 * 1000,
+      },
+    },
+  },
+});
+```
+
+---
+
+# Storage
+
+````md magic-move
+```ts
+export default defineNitroConfig({
+  storage: {
+    cache: {
+      driver: "redis",
+      host: "HOSTNAME",
+      tls: true,
+      port: 6380,
+      password: "PASSWORD",
+    },
+  },
+});
+```
+
+```ts
+export default defineNitroConfig({
+  storage: {
+    cache: {
+      driver: "redis",
+      host: "HOSTNAME",
+      tls: true,
+      port: 6380,
+      password: "PASSWORD",
+    },
+    favorites: {
+      driver: "fs",
+      base: ".data/favorites",
+    },
+  },
+});
+```
+````
+
+---
+
+# Storage
+
+Maybe we want to save some people as "favorites"
+
+```ts
+//routes/favorites/[id].put.ts
+export default eventHandler(async (event) => {
+  const { id } = await getValidatedRouterParams(event, (data) => {
+    const id = Number(data.id);
+    if (Number.isNaN(id)) {
+      throw new Error("id must be a number");
+    }
+    return { id: id };
+  });
+  const data = await $fetch<[{ name: string }]>(
+    `http://swapi.dev/api/people/${id}`,
+  );
+  const res = data.map((item) => ({ ...item, name: item.name.toUpperCase() }));
+  await useStorage('favorites').setItem(id, res);
+  return res;
+});
+```
+
+---
+
+# In-Server fetch
+
+URL = Uniform **resource** Locator
+
+Why not reuse our existing resource?
+
+````md magic-move
+```ts
+export default eventHandler(async (event) => {
+  const { id } = await getValidatedRouterParams(event, (data) => {
+    const id = Number(data.id);
+    if (Number.isNaN(id)) {
+      throw new Error("id must be a number");
+    }
+    return { id: id };
+  });
+  const data = await $fetch<[{ name: string }]>(
+    `http://swapi.dev/api/people/${id}`,
+  );
+  const res = data.map((item) => ({ ...item, name: item.name.toUpperCase() }));
+  await useStorage("favorites").setItem(id, res);
+  return res;
+});
+```
+
+```ts
+export default eventHandler(async (event) => {
+  const res = await $fetch(`/people/${getRouterParam(event, "id")}`);
+  await useStorage("favorites").setItem(id, res);
+  return res;
+});
+```
+````
+
+<v-click>
+No HTTP Request is actually made to `/people`, Nitro will call the function directly.
+</v-click>
